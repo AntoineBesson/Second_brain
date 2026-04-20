@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: secondbrain
+      POSTGRES_PASSWORD: secondbrain
+      POSTGRES_DB: secondbrain
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secondbrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama-entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          curl -sf http://localhost:11434/api/tags |
+          python3 -c "
+          import sys, json;
+          d = json.load(sys.stdin);
+          raw = {m['name'] for m in d.get('models', [])};
+          names = raw | {n.split(':')[0] for n in raw};
+          sys.exit(0 if {'nomic-embed-text', 'gemma3:4b'}.issubset(names) else 1)
+          "
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 300s
+
+  backend:
+    build: ./backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  ollama_data:
