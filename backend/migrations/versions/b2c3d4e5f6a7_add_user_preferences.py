@@ -24,7 +24,7 @@ def upgrade() -> None:
             "timezone",
             sa.Text(),
             nullable=False,
-            server_default="Europe/Paris",
+            server_default="'Europe/Paris'",
         ),
         sa.PrimaryKeyConstraint("chat_id"),
     )

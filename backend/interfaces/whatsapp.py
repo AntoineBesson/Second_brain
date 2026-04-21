@@ -1,4 +1,5 @@
 import logging
+from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Form, Header, HTTPException, Request
 from fastapi.responses import Response
@@ -27,5 +28,5 @@ async def whatsapp_webhook(
     chat_id = From.removeprefix("whatsapp:")
     result = await handle_message(MessageRequest(text=Body, chat_id=chat_id))
 
-    twiml = f"<Response><Message>{result.response}</Message></Response>"
+    twiml = f"<Response><Message>{escape(result.response)}</Message></Response>"
     return Response(content=twiml, media_type="text/xml")
