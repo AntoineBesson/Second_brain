@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.reminders.service import extract_and_save
 from backend.router.escalation import call_tier2, log_escalation, should_escalate
 from backend.router.intent import call_tier1
 
@@ -28,6 +29,18 @@ async def message(req: MessageRequest) -> MessageResponse:
     except Exception as exc:
         logger.error("Tier 1 failed: %s", exc)
         raise HTTPException(status_code=503, detail="LLM backend unavailable") from exc
+
+    if tier1.intent == "store_reminder":
+        try:
+            reminder = await extract_and_save(req.text, req.chat_id)
+            dt = reminder.trigger_at
+            response_text = (
+                f"Got it — I'll remind you to {reminder.text} "
+                f"on {dt:%B} {dt.day} at {dt:%H:%M}."
+            )
+        except ValueError:
+            response_text = "I couldn't understand when to set that reminder."
+        return MessageResponse(response=response_text, tier_used=1, intent=tier1.intent)
 
     if should_escalate(tier1):
         reason = tier1.escalation_reason or f"complexity={tier1.complexity:.2f}"

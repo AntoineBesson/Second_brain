@@ -293,3 +293,74 @@ async def test_message_endpoint_returns_503_on_tier1_failure():
             await message(MessageRequest(text="Hello", chat_id="chat_001"))
     assert exc_info.value.status_code == 503
     assert "unavailable" in exc_info.value.detail
+
+
+# ---------------------------------------------------------------------------
+# POST /message — store_reminder intent
+# ---------------------------------------------------------------------------
+
+async def test_message_endpoint_creates_reminder_on_store_reminder_intent():
+    from datetime import datetime, timezone
+    tier1_result = Tier1Response(
+        intent="store_reminder",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    mock_reminder = MagicMock()
+    mock_reminder.text = "Call Marc"
+    mock_reminder.trigger_at = datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc)
+    req = MessageRequest(text="Remind me to call Marc tomorrow at 10", chat_id="+33612345678")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.extract_and_save", AsyncMock(return_value=mock_reminder)):
+        result = await message(req)
+
+    assert result.tier_used == 1
+    assert result.intent == "store_reminder"
+    assert "Call Marc" in result.response
+    assert "April" in result.response
+
+
+async def test_message_endpoint_returns_friendly_error_on_extraction_failure():
+    tier1_result = Tier1Response(
+        intent="store_reminder",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Remind me blah", chat_id="+33612345678")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.extract_and_save", AsyncMock(side_effect=ValueError("bad parse"))):
+        result = await message(req)
+
+    assert result.tier_used == 1
+    assert result.intent == "store_reminder"
+    assert "couldn't understand" in result.response
+
+
+async def test_message_endpoint_does_not_escalate_store_reminder():
+    """store_reminder must never call Tier 2."""
+    tier1_result = Tier1Response(
+        intent="store_reminder",
+        complexity=0.95,  # would normally trigger escalation
+        escalate=True,
+        escalation_reason="",
+        response="",
+    )
+    mock_reminder = MagicMock()
+    mock_reminder.text = "Call Marc"
+    from datetime import datetime, timezone
+    mock_reminder.trigger_at = datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc)
+    req = MessageRequest(text="Remind me to call Marc tomorrow at 10", chat_id="+33612345678")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.extract_and_save", AsyncMock(return_value=mock_reminder)), \
+         patch("backend.router.api.call_tier2", AsyncMock()) as mock_t2:
+        result = await message(req)
+
+    mock_t2.assert_not_awaited()
+    assert result.intent == "store_reminder"
