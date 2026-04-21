@@ -6,16 +6,22 @@ from anthropic import AsyncAnthropic
 
 from backend.config import settings
 
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
 SYSTEM_PROMPT = (
-    "You are a personal assistant intent classifier. "
-    "Analyze the user message and respond with ONLY valid JSON — no markdown, no explanation:\n"
+    'You are a personal assistant intent classifier. '
+    'Analyze the user message and respond with ONLY a raw JSON object — '
+    'no markdown, no code fences, no explanation.\n\n'
+    'The JSON must have exactly these fields:\n'
     '{\n'
-    '  "intent": "<one of: store_reminder, store_knowledge, query, recall, tool_call, general>",\n'
-    '  "complexity": <float 0.0-1.0>,\n'
-    '  "escalate": <true|false>,\n'
-    '  "escalation_reason": "<empty string if not escalating>",\n'
-    '  "response": "<your response to the user>"\n'
-    "}"
+    '  "intent": <one of the strings: store_reminder, store_knowledge, query, recall, tool_call, general>,\n'
+    '  "complexity": <a float between 0.0 and 1.0>,\n'
+    '  "escalate": <true or false>,\n'
+    '  "escalation_reason": <empty string if not escalating, else brief reason>,\n'
+    '  "response": <your response to the user>\n'
+    '}\n\n'
+    '"intent" must be exactly one of: store_reminder, store_knowledge, query, recall, tool_call, general\n'
+    'Do not use any other intent value.'
 )
 
 
@@ -29,10 +35,10 @@ class Tier1Response:
 
 
 async def call_tier1(message: str) -> Tier1Response:
-    """Call Tier 1 (Ollama gemma3:4b). Falls back to Haiku if Ollama is unavailable."""
+    """Call Tier 1 (Ollama gemma3:4b). Falls back to Haiku if Ollama is unreachable."""
     try:
         return await _call_ollama(message)
-    except Exception:
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
         return await _call_haiku_fallback(message)
 
 
@@ -58,7 +64,7 @@ async def _call_ollama(message: str) -> Tier1Response:
 async def _call_haiku_fallback(message: str) -> Tier1Response:
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     response = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=HAIKU_MODEL,
         max_tokens=512,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": message}],
@@ -67,11 +73,14 @@ async def _call_haiku_fallback(message: str) -> Tier1Response:
 
 
 def _parse_response(content: str) -> Tier1Response:
-    data = json.loads(content)
-    return Tier1Response(
-        intent=data["intent"],
-        complexity=float(data["complexity"]),
-        escalate=bool(data["escalate"]),
-        escalation_reason=data.get("escalation_reason", ""),
-        response=data["response"],
-    )
+    try:
+        data = json.loads(content)
+        return Tier1Response(
+            intent=data["intent"],
+            complexity=max(0.0, min(1.0, float(data["complexity"]))),
+            escalate=str(data.get("escalate", False)).lower() == "true",
+            escalation_reason=data.get("escalation_reason", ""),
+            response=data["response"],
+        )
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Failed to parse LLM response: {exc!r}. Raw content: {content!r}") from exc

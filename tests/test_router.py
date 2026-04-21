@@ -3,8 +3,9 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
-from backend.router.intent import Tier1Response, _call_haiku_fallback, _call_ollama, call_tier1
+from backend.router.intent import Tier1Response, _call_haiku_fallback, _call_ollama, _parse_response, call_tier1
 
 
 # ---------------------------------------------------------------------------
@@ -111,3 +112,34 @@ async def test_call_haiku_fallback_parses_response():
 
     assert result.intent == "general"
     assert result.response == "I can help with that."
+
+
+# ---------------------------------------------------------------------------
+# _parse_response — error handling
+# ---------------------------------------------------------------------------
+
+
+def test_parse_response_raises_on_bad_json():
+    with pytest.raises(ValueError, match="Failed to parse LLM response"):
+        _parse_response("not valid json {{")
+
+
+def test_parse_response_raises_on_missing_key():
+    with pytest.raises(ValueError, match="Failed to parse LLM response"):
+        _parse_response('{"complexity": 0.5, "escalate": false, "response": "hi"}')  # missing "intent"
+
+
+def test_parse_response_clamps_complexity():
+    result = _parse_response(
+        '{"intent": "general", "complexity": 1.8, "escalate": false, '
+        '"escalation_reason": "", "response": "ok"}'
+    )
+    assert result.complexity == 1.0
+
+
+def test_parse_response_handles_string_escalate_false():
+    result = _parse_response(
+        '{"intent": "general", "complexity": 0.3, "escalate": "false", '
+        '"escalation_reason": "", "response": "ok"}'
+    )
+    assert result.escalate is False
