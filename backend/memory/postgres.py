@@ -39,3 +39,13 @@ class ApiTool(Base):
     spec = Column(JSONB, nullable=False)
     auth_type = Column(Text, nullable=False)
     auth_secret_env = Column(Text)
+
+
+class Escalation(Base):
+    __tablename__ = "escalations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=sql_text("gen_random_uuid()"))
+    message = Column(Text, nullable=False)
+    reason = Column(Text, nullable=False)
+    chat_id = Column(Text, nullable=False)
+    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, server_default=sql_text("now()"))

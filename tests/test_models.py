@@ -1,6 +1,6 @@
 from sqlalchemy import inspect
 
-from backend.memory.postgres import ApiTool, KnowledgeItem, Reminder
+from backend.memory.postgres import ApiTool, Escalation, KnowledgeItem, Reminder
 
 
 def test_reminder_columns():
@@ -21,3 +21,8 @@ def test_api_tool_columns():
 def test_api_tool_name_is_unique():
     name_col = inspect(ApiTool).columns["name"]
     assert name_col.unique
+
+
+def test_escalation_columns():
+    cols = {c.key for c in inspect(Escalation).columns}
+    assert cols == {"id", "message", "reason", "chat_id", "timestamp"}
