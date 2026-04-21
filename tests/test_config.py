@@ -5,16 +5,16 @@ from backend.config import Settings
 
 
 def test_settings_raises_on_missing_database_url(monkeypatch):
-    # BaseSettings reads from environment as fallback, so unset to test validation
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(ValidationError):
         Settings(
-            anthropic_api_key="k",
-            openai_api_key="k",
-            twilio_account_sid="k",
-            twilio_auth_token="k",
-            twilio_whatsapp_from="whatsapp:+1",
-            # database_url intentionally omitted
+            _env_file=None,
+            anthropic_api_key="test-key",
+            openai_api_key="test-key",
+            twilio_account_sid="test-sid",
+            twilio_auth_token="test-token",
+            twilio_whatsapp_from="whatsapp:+14155551234",
+            # database_url intentionally omitted to trigger ValidationError
             qdrant_url="http://localhost:6333",
             ollama_url="http://localhost:11434",
         )

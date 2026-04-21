@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from backend.router.intent import Tier1Response, _call_haiku_fallback, _call_ollama, _parse_response, call_tier1
 from backend.router.escalation import call_tier2, log_escalation, should_escalate
@@ -280,3 +281,15 @@ async def test_message_endpoint_escalates_to_tier2():
     assert result.tier_used == 2
     assert result.response == "Deep Sonnet answer"
     assert result.intent == "general"
+
+
+# ---------------------------------------------------------------------------
+# POST /message — Error handling (Tier 1 failure)
+# ---------------------------------------------------------------------------
+
+async def test_message_endpoint_returns_503_on_tier1_failure():
+    with patch("backend.router.api.call_tier1", AsyncMock(side_effect=Exception("LLM down"))):
+        with pytest.raises(HTTPException) as exc_info:
+            await message(MessageRequest(text="Hello", chat_id="chat_001"))
+    assert exc_info.value.status_code == 503
+    assert "unavailable" in exc_info.value.detail

@@ -1,9 +1,12 @@
-from fastapi import APIRouter
+import logging
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.router.escalation import call_tier2, log_escalation, should_escalate
 from backend.router.intent import call_tier1
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -20,12 +23,28 @@ class MessageResponse(BaseModel):
 
 @router.post("/message", response_model=MessageResponse)
 async def message(req: MessageRequest) -> MessageResponse:
-    tier1 = await call_tier1(req.text)
+    try:
+        tier1 = await call_tier1(req.text)
+    except Exception as exc:
+        logger.error("Tier 1 failed: %s", exc)
+        raise HTTPException(status_code=503, detail="LLM backend unavailable") from exc
 
     if should_escalate(tier1):
         reason = tier1.escalation_reason or f"complexity={tier1.complexity:.2f}"
-        await log_escalation(req.text, reason, req.chat_id)
-        response_text = await call_tier2(req.text, tier1)
-        return MessageResponse(response=response_text, tier_used=2, intent=tier1.intent)
+
+        try:
+            await log_escalation(req.text, reason, req.chat_id)
+        except Exception as exc:
+            logger.warning("Failed to log escalation: %s", exc)
+
+        try:
+            response_text = await call_tier2(req.text, tier1)
+            tier_used = 2
+        except Exception as exc:
+            logger.warning("Tier 2 failed, falling back to Tier 1 response: %s", exc)
+            response_text = tier1.response
+            tier_used = 1
+
+        return MessageResponse(response=response_text, tier_used=tier_used, intent=tier1.intent)
 
     return MessageResponse(response=tier1.response, tier_used=1, intent=tier1.intent)
