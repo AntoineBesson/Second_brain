@@ -7,6 +7,7 @@ import pytest
 
 from backend.router.intent import Tier1Response, _call_haiku_fallback, _call_ollama, _parse_response, call_tier1
 from backend.router.escalation import call_tier2, log_escalation, should_escalate
+from backend.router.api import MessageRequest, MessageResponse, message
 
 
 # ---------------------------------------------------------------------------
@@ -233,3 +234,49 @@ async def test_call_tier2_returns_response():
     user_content = call_args.kwargs["messages"][0]["content"]
     assert "partial answer" in user_content
     assert "What is the meaning of life?" in user_content
+
+
+# ---------------------------------------------------------------------------
+# POST /message — Tier 1 path (no escalation)
+# ---------------------------------------------------------------------------
+
+async def test_message_endpoint_uses_tier1_when_no_escalation():
+    tier1_result = Tier1Response(
+        intent="general",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="Hello from Tier 1",
+    )
+    req = MessageRequest(text="Hello", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)):
+        result = await message(req)
+
+    assert result.tier_used == 1
+    assert result.response == "Hello from Tier 1"
+    assert result.intent == "general"
+
+
+# ---------------------------------------------------------------------------
+# POST /message — Tier 2 path (escalation triggered by high complexity)
+# ---------------------------------------------------------------------------
+
+async def test_message_endpoint_escalates_to_tier2():
+    tier1_result = Tier1Response(
+        intent="general",
+        complexity=0.9,
+        escalate=False,
+        escalation_reason="",
+        response="Partial from Tier 1",
+    )
+    req = MessageRequest(text="Analyze the nature of consciousness", chat_id="chat_002")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.call_tier2", AsyncMock(return_value="Deep Sonnet answer")), \
+         patch("backend.router.api.log_escalation", AsyncMock()):
+        result = await message(req)
+
+    assert result.tier_used == 2
+    assert result.response == "Deep Sonnet answer"
+    assert result.intent == "general"

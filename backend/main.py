@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from backend.db import engine
 from backend.health import router as health_router
+from backend.router.api import router as message_router
 
 
 @asynccontextmanager
@@ -20,3 +21,4 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Second Brain", lifespan=lifespan)
 app.include_router(health_router)
+app.include_router(message_router)
