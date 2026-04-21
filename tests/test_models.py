@@ -25,4 +25,10 @@ def test_api_tool_name_is_unique():
 
 def test_escalation_columns():
     cols = {c.key for c in inspect(Escalation).columns}
-    assert cols == {"id", "message", "reason", "chat_id", "timestamp"}
+    assert cols == {"id", "message", "reason", "chat_id", "escalated_at"}
+
+
+def test_escalation_timestamp_defaults():
+    ts_col = inspect(Escalation).columns["escalated_at"]
+    assert not ts_col.nullable
+    assert ts_col.server_default is not None

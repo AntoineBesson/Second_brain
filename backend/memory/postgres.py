@@ -48,4 +48,4 @@ class Escalation(Base):
     message = Column(Text, nullable=False)
     reason = Column(Text, nullable=False)
     chat_id = Column(Text, nullable=False)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, server_default=sql_text("now()"))
+    escalated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=sql_text("now()"))

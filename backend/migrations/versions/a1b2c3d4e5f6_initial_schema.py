@@ -95,7 +95,7 @@ def upgrade() -> None:
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("chat_id", sa.Text(), nullable=False),
         sa.Column(
-            "timestamp",
+            "escalated_at",
             postgresql.TIMESTAMP(timezone=True),
             server_default=sa.text("now()"),
             nullable=False,
