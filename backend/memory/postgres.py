@@ -49,3 +49,10 @@ class Escalation(Base):
     reason = Column(Text, nullable=False)
     chat_id = Column(Text, nullable=False)
     escalated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=sql_text("now()"))
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    chat_id = Column(Text, primary_key=True)
+    timezone = Column(Text, nullable=False, server_default=sql_text("'Europe/Paris'"))

@@ -32,3 +32,15 @@ def test_escalation_timestamp_defaults():
     ts_col = inspect(Escalation).columns["escalated_at"]
     assert not ts_col.nullable
     assert ts_col.server_default is not None
+
+
+def test_user_preference_model_has_expected_columns():
+    from backend.memory.postgres import UserPreference
+    cols = {c.name for c in UserPreference.__table__.columns}
+    assert cols == {"chat_id", "timezone"}
+
+
+def test_user_preference_default_timezone():
+    from backend.memory.postgres import UserPreference
+    col = UserPreference.__table__.c["timezone"]
+    assert "Europe/Paris" in str(col.server_default.arg)
