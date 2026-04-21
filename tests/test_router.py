@@ -168,6 +168,12 @@ def test_should_not_escalate_on_low_complexity_no_flag():
     assert should_escalate(r) is False
 
 
+def test_should_not_escalate_at_exact_threshold():
+    r = Tier1Response(intent="general", complexity=0.7, escalate=False,
+                      escalation_reason="", response="")
+    assert should_escalate(r) is False
+
+
 def test_should_escalate_on_escalation_intent():
     # "synthesize" is outside the standard intent enum but may be returned by a model
     r = Tier1Response(intent="synthesize", complexity=0.5, escalate=False,
@@ -193,6 +199,11 @@ async def test_log_escalation_writes_to_db():
 
     mock_session.execute.assert_called_once()
     mock_session.commit.assert_called_once()
+    # Verify the correct bind parameters were passed
+    bound_params = mock_session.execute.call_args.args[1]
+    assert bound_params["message"] == "complex question"
+    assert bound_params["reason"] == "complexity=0.80"
+    assert bound_params["chat_id"] == "chat_001"
 
 
 # ---------------------------------------------------------------------------
@@ -221,3 +232,4 @@ async def test_call_tier2_returns_response():
     call_args = mock_client.messages.create.call_args
     user_content = call_args.kwargs["messages"][0]["content"]
     assert "partial answer" in user_content
+    assert "What is the meaning of life?" in user_content

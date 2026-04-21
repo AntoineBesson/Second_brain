@@ -10,6 +10,12 @@ ESCALATION_INTENTS = {"synthesize", "analyze", "compare"}
 
 SONNET_MODEL = "claude-sonnet-4-6"
 
+TIER2_SYSTEM_PROMPT = (
+    "You are a knowledgeable personal assistant helping the user manage their second brain. "
+    "Provide a comprehensive, accurate, and helpful response. "
+    "If a Tier-1 analysis is included in the message, use it as context but improve upon it."
+)
+
 
 def should_escalate(result: Tier1Response) -> bool:
     return (
@@ -30,6 +36,7 @@ async def call_tier2(message: str, tier1: Tier1Response) -> str:
     response = await client.messages.create(
         model=SONNET_MODEL,
         max_tokens=1024,
+        system=TIER2_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
     )
     return response.content[0].text
