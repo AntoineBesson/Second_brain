@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from backend.router.intent import Tier1Response, _call_haiku_fallback, _call_ollama, _parse_response, call_tier1
+from backend.router.escalation import call_tier2, log_escalation, should_escalate
 
 
 # ---------------------------------------------------------------------------
@@ -143,3 +144,80 @@ def test_parse_response_handles_string_escalate_false():
         '"escalation_reason": "", "response": "ok"}'
     )
     assert result.escalate is False
+
+
+# ---------------------------------------------------------------------------
+# should_escalate — pure function, no mocking needed
+# ---------------------------------------------------------------------------
+
+def test_should_escalate_on_high_complexity():
+    r = Tier1Response(intent="general", complexity=0.8, escalate=False,
+                      escalation_reason="", response="")
+    assert should_escalate(r) is True
+
+
+def test_should_escalate_on_escalate_flag():
+    r = Tier1Response(intent="query", complexity=0.2, escalate=True,
+                      escalation_reason="nuanced question", response="")
+    assert should_escalate(r) is True
+
+
+def test_should_not_escalate_on_low_complexity_no_flag():
+    r = Tier1Response(intent="general", complexity=0.3, escalate=False,
+                      escalation_reason="", response="Hello!")
+    assert should_escalate(r) is False
+
+
+def test_should_escalate_on_escalation_intent():
+    # "synthesize" is outside the standard intent enum but may be returned by a model
+    r = Tier1Response(intent="synthesize", complexity=0.5, escalate=False,
+                      escalation_reason="", response="")
+    assert should_escalate(r) is True
+
+
+# ---------------------------------------------------------------------------
+# log_escalation — mocks DB session
+# ---------------------------------------------------------------------------
+
+async def test_log_escalation_writes_to_db():
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock()
+    mock_session.commit = AsyncMock()
+
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("backend.router.escalation.AsyncSessionLocal", return_value=mock_cm):
+        await log_escalation("complex question", "complexity=0.80", "chat_001")
+
+    mock_session.execute.assert_called_once()
+    mock_session.commit.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# call_tier2 — mocks Anthropic client
+# ---------------------------------------------------------------------------
+
+async def test_call_tier2_returns_response():
+    tier1 = Tier1Response(
+        intent="general", complexity=0.9, escalate=False,
+        escalation_reason="", response="partial answer"
+    )
+    mock_content = MagicMock()
+    mock_content.text = "Full detailed answer from Sonnet."
+
+    mock_msg = MagicMock()
+    mock_msg.content = [mock_content]
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_msg)
+
+    with patch("backend.router.escalation.AsyncAnthropic", return_value=mock_client):
+        result = await call_tier2("What is the meaning of life?", tier1)
+
+    assert result == "Full detailed answer from Sonnet."
+    # Verify Tier 1's partial response was included as context
+    call_args = mock_client.messages.create.call_args
+    user_content = call_args.kwargs["messages"][0]["content"]
+    assert "partial answer" in user_content
