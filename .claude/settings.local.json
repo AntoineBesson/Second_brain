@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/trash/.claude/projects/C--Users-trash-Second-brain/memory//**)",
+      "Read(//c/Users/trash/.claude/projects/C--Users-trash-Second-brain/memory/**)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git commit:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pip install pydantic-settings pydantic python-dotenv)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pytest:*)",
+      "Bash(pip show:*)"
+    ]
+  }
+}
