@@ -14,13 +14,11 @@ async def fetch_bytes(
 ) -> bytes:
     """Return raw bytes from an UploadFile, local path, or HTTP URL.
 
-    auth is forwarded as HTTP Basic auth — used for Twilio MediaUrl0 which
+    auth and headers are only forwarded for HTTP URLs.
+    auth is HTTP Basic auth — used for Twilio MediaUrl0 which
     requires (ACCOUNT_SID, AUTH_TOKEN).
     """
-    merged_headers = {**_DEFAULT_HEADERS, **(headers or {})}
-
     if isinstance(source, UploadFile):
-        # UploadFile or file-like mock
         return await source.read()
 
     if isinstance(source, Path) or (
@@ -32,7 +30,7 @@ async def fetch_bytes(
     r = httpx.get(
         source,
         auth=auth,
-        headers=merged_headers,
+        headers={**_DEFAULT_HEADERS, **(headers or {})},
         timeout=_TIMEOUT,
         follow_redirects=True,
     )
