@@ -61,6 +61,8 @@ def _embed_openai(text: str) -> EmbedResult:
 
 
 def _chunk(text: str, size: int = 512, overlap: int = 50) -> list[str]:
+    if overlap >= size:
+        raise ValueError(f"overlap ({overlap}) must be less than size ({size})")
     words = text.split()
     if not words:
         return [""]

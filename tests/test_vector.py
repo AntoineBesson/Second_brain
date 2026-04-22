@@ -81,6 +81,11 @@ def test_chunk_splits_with_overlap():
     assert len(chunks[1].split()) == 50
 
 
+def test_chunk_raises_on_invalid_overlap():
+    with pytest.raises(ValueError, match="overlap"):
+        _chunk("hello world", size=10, overlap=10)
+
+
 import uuid as uuid_mod
 from backend.memory.vector import store_chunk
 
