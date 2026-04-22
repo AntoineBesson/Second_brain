@@ -79,3 +79,28 @@ def test_chunk_splits_with_overlap():
     assert len(chunks) == 2
     assert len(chunks[0].split()) == 60
     assert len(chunks[1].split()) == 50
+
+
+import uuid as uuid_mod
+from backend.memory.vector import store_chunk
+
+
+def test_store_chunk_embeds_and_upserts():
+    mock_embed_result = EmbedResult(vector=[0.1] * 768, model="nomic-embed-text", source="ollama")
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = MagicMock(return_value=True)
+    mock_qdrant.upsert = MagicMock()
+
+    with patch("backend.memory.vector.embed", return_value=mock_embed_result), \
+         patch("backend.memory.vector._qdrant_client", mock_qdrant):
+        result = store_chunk("some text", {"source_type": "whatsapp", "chunk_index": 0})
+
+    # Returns a valid UUID string
+    uuid_mod.UUID(result)
+
+    mock_qdrant.upsert.assert_called_once()
+    call_kwargs = mock_qdrant.upsert.call_args.kwargs
+    assert call_kwargs["collection_name"] == "brain"
+    point = call_kwargs["points"][0]
+    assert point.payload["text"] == "some text"
+    assert point.vector == [0.1] * 768

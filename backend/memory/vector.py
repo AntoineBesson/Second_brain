@@ -77,8 +77,23 @@ def _chunk(text: str, size: int = 512, overlap: int = 50) -> list[str]:
     return chunks
 
 
+def _ensure_collection(dim: int) -> None:
+    if not _get_qdrant().collection_exists("brain"):
+        _get_qdrant().create_collection(
+            collection_name="brain",
+            vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+        )
+
+
 def store_chunk(text: str, metadata: dict) -> str:
-    pass  # placeholder — implemented in Task 4
+    result = embed(text)
+    _ensure_collection(len(result.vector))
+    point_id = str(uuid.uuid4())
+    _get_qdrant().upsert(
+        collection_name="brain",
+        points=[PointStruct(id=point_id, vector=result.vector, payload={**metadata, "text": text})],
+    )
+    return point_id
 
 
 def search(query: str, top_k: int = 5, filter: dict | None = None) -> list[dict]:
