@@ -11,7 +11,8 @@ async def test_ingest_pdf_returns_chunk_count():
 
     mock_doc = MagicMock()
     mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-    mock_doc.close = MagicMock()
+    mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+    mock_doc.__exit__ = MagicMock(return_value=None)
 
     mock_fitz = MagicMock()
     mock_fitz.open = MagicMock(return_value=mock_doc)
@@ -31,7 +32,8 @@ async def test_ingest_pdf_sets_correct_metadata():
 
     mock_doc = MagicMock()
     mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-    mock_doc.close = MagicMock()
+    mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+    mock_doc.__exit__ = MagicMock(return_value=None)
 
     mock_fitz = MagicMock()
     mock_fitz.open = MagicMock(return_value=mock_doc)
@@ -58,7 +60,8 @@ async def test_ingest_pdf_chunk_indices_increment():
 
     mock_doc = MagicMock()
     mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-    mock_doc.close = MagicMock()
+    mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+    mock_doc.__exit__ = MagicMock(return_value=None)
 
     mock_fitz = MagicMock()
     mock_fitz.open = MagicMock(return_value=mock_doc)
@@ -79,7 +82,8 @@ async def test_ingest_pdf_passes_auth_to_fetch_bytes():
 
     mock_doc = MagicMock()
     mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-    mock_doc.close = MagicMock()
+    mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+    mock_doc.__exit__ = MagicMock(return_value=None)
 
     mock_fitz = MagicMock()
     mock_fitz.open = MagicMock(return_value=mock_doc)
@@ -107,7 +111,8 @@ async def test_ingest_pdf_joins_pages_with_double_newline():
 
     mock_doc = MagicMock()
     mock_doc.__iter__ = MagicMock(return_value=iter([page1, page2]))
-    mock_doc.close = MagicMock()
+    mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+    mock_doc.__exit__ = MagicMock(return_value=None)
 
     mock_fitz = MagicMock()
     mock_fitz.open = MagicMock(return_value=mock_doc)

@@ -23,9 +23,8 @@ async def ingest_pdf(
         raise ImportError("pymupdf required: pip install pymupdf")
 
     raw = await fetch_bytes(source, auth=auth)
-    doc = fitz.open(stream=raw, filetype="pdf")
-    pages = [page.get_text("text") for page in doc]
-    doc.close()
+    with fitz.open(stream=raw, filetype="pdf") as doc:
+        pages = [page.get_text("text") for page in doc]
 
     full_text = "\n\n".join(pages)
     chunks = _chunk(full_text)
