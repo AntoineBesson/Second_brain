@@ -364,3 +364,77 @@ async def test_message_endpoint_does_not_escalate_store_reminder():
 
     mock_t2.assert_not_awaited()
     assert result.intent == "store_reminder"
+
+
+# ---------------------------------------------------------------------------
+# store_knowledge intent
+# ---------------------------------------------------------------------------
+
+async def test_message_endpoint_stores_chunks_on_store_knowledge_intent():
+    from backend.memory.vector import EmbedResult
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Python is great for data science", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api._chunk", return_value=["Python is great for data science"]), \
+         patch("backend.router.api.store_chunk", return_value="fake-uuid") as mock_store:
+        result = await message(req)
+
+    assert result.response == "Saved."
+    assert result.tier_used == 1
+    assert result.intent == "store_knowledge"
+    mock_store.assert_called_once()
+    call_positional = mock_store.call_args.args
+    assert call_positional[0] == "Python is great for data science"
+    assert call_positional[1]["source_type"] == "whatsapp"
+    assert call_positional[1]["chunk_index"] == 0
+
+
+async def test_message_endpoint_returns_friendly_error_on_embed_failure():
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Some note", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api._chunk", return_value=["Some note"]), \
+         patch("backend.router.api.store_chunk", side_effect=RuntimeError("Embedding unavailable")):
+        result = await message(req)
+
+    assert "embedding service unavailable" in result.response.lower()
+    assert result.intent == "store_knowledge"
+
+
+# ---------------------------------------------------------------------------
+# GET /embed-status
+# ---------------------------------------------------------------------------
+
+async def test_embed_status_returns_ollama_info():
+    from backend.memory.vector import EmbedResult
+    from backend.router.api import embed_status
+
+    mock_result = EmbedResult(vector=[0.1] * 768, model="nomic-embed-text", source="ollama")
+    with patch("backend.router.api.embed", return_value=mock_result):
+        result = await embed_status()
+
+    assert result == {"model": "nomic-embed-text", "source": "ollama", "dimensions": 768}
+
+
+async def test_embed_status_returns_503_when_embedding_unavailable():
+    from fastapi import HTTPException
+    from backend.router.api import embed_status
+
+    with patch("backend.router.api.embed", side_effect=RuntimeError("Embedding unavailable")):
+        with pytest.raises(HTTPException) as exc_info:
+            await embed_status()
+    assert exc_info.value.status_code == 503

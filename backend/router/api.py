@@ -1,8 +1,10 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.memory.vector import _chunk, embed, search, store_chunk
 from backend.reminders.service import extract_and_save
 from backend.router.escalation import call_tier2, log_escalation, should_escalate
 from backend.router.intent import call_tier1
@@ -20,6 +22,15 @@ class MessageResponse(BaseModel):
     response: str
     tier_used: int
     intent: str
+
+
+@router.get("/embed-status")
+async def embed_status() -> dict:
+    try:
+        result = embed("test")
+        return {"model": result.model, "source": result.source, "dimensions": len(result.vector)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Embedding service unavailable") from exc
 
 
 @router.post("/message", response_model=MessageResponse)
@@ -40,6 +51,25 @@ async def message(req: MessageRequest) -> MessageResponse:
             )
         except ValueError:
             response_text = "I couldn't understand when to set that reminder."
+        return MessageResponse(response=response_text, tier_used=1, intent=tier1.intent)
+
+    if tier1.intent == "store_knowledge":
+        try:
+            chunks = _chunk(req.text)
+            for i, chunk in enumerate(chunks):
+                store_chunk(chunk, {
+                    "source_type": "whatsapp",
+                    "source_url": "",
+                    "title": req.text[:80],
+                    "date_added": datetime.now(timezone.utc).isoformat(),
+                    "chunk_index": i,
+                    "tags": [],
+                })
+            response_text = "Saved."
+        except RuntimeError:
+            response_text = "Could not save — embedding service unavailable."
+        except Exception:
+            response_text = "Could not save — vector store unavailable."
         return MessageResponse(response=response_text, tier_used=1, intent=tier1.intent)
 
     if should_escalate(tier1):
