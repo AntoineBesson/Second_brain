@@ -438,3 +438,79 @@ async def test_embed_status_returns_503_when_embedding_unavailable():
         with pytest.raises(HTTPException) as exc_info:
             await embed_status()
     assert exc_info.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# query intent — context injection
+# ---------------------------------------------------------------------------
+
+async def test_message_endpoint_injects_context_on_query_with_results():
+    tier1_initial = Tier1Response(
+        intent="query",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="Answer without context",
+    )
+    tier1_enriched = Tier1Response(
+        intent="query",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="Answer with context",
+    )
+    search_results = [{"text": "Python is great for data science", "source_type": "whatsapp"}]
+    req = MessageRequest(text="What language for data?", chat_id="chat_001")
+
+    call_tier1_mock = AsyncMock(side_effect=[tier1_initial, tier1_enriched])
+
+    with patch("backend.router.api.call_tier1", call_tier1_mock), \
+         patch("backend.router.api.search", return_value=search_results):
+        result = await message(req)
+
+    assert result.response == "Answer with context"
+    assert call_tier1_mock.call_count == 2
+    second_call_text = call_tier1_mock.call_args_list[1].args[0]
+    assert "Python is great for data science" in second_call_text
+    assert "What language for data?" in second_call_text
+
+
+async def test_message_endpoint_skips_context_injection_when_no_results():
+    tier1_result = Tier1Response(
+        intent="query",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="Answer without context",
+    )
+    req = MessageRequest(text="What language for data?", chat_id="chat_001")
+
+    call_tier1_mock = AsyncMock(return_value=tier1_result)
+
+    with patch("backend.router.api.call_tier1", call_tier1_mock), \
+         patch("backend.router.api.search", return_value=[]):
+        result = await message(req)
+
+    assert call_tier1_mock.call_count == 1
+    assert result.response == "Answer without context"
+
+
+async def test_message_endpoint_continues_on_search_failure():
+    """If search() raises, the query proceeds without context injection."""
+    tier1_result = Tier1Response(
+        intent="query",
+        complexity=0.3,
+        escalate=False,
+        escalation_reason="",
+        response="Fallback answer",
+    )
+    req = MessageRequest(text="What language for data?", chat_id="chat_001")
+
+    call_tier1_mock = AsyncMock(return_value=tier1_result)
+
+    with patch("backend.router.api.call_tier1", call_tier1_mock), \
+         patch("backend.router.api.search", side_effect=Exception("Qdrant down")):
+        result = await message(req)
+
+    assert call_tier1_mock.call_count == 1
+    assert result.response == "Fallback answer"

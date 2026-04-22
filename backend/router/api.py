@@ -72,6 +72,16 @@ async def message(req: MessageRequest) -> MessageResponse:
             response_text = "Could not save — vector store unavailable."
         return MessageResponse(response=response_text, tier_used=1, intent=tier1.intent)
 
+    if tier1.intent == "query":
+        try:
+            results = search(req.text, top_k=5)
+            if results:
+                context_lines = "\n".join(f"- {r['text']}" for r in results)
+                enriched = f"[Retrieved context:\n{context_lines}]\n\nUser query: {req.text}"
+                tier1 = await call_tier1(enriched)
+        except Exception as exc:
+            logger.warning("Search failed, proceeding without context: %s", exc)
+
     if should_escalate(tier1):
         reason = tier1.escalation_reason or f"complexity={tier1.complexity:.2f}"
 
