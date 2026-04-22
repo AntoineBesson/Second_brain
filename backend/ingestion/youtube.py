@@ -7,6 +7,7 @@ from youtube_transcript_api import (
     YouTubeTranscriptApi,
 )
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
 from backend.memory.vector import _chunk, store_chunk
 
@@ -63,7 +64,10 @@ async def ingest_youtube(url: str) -> int:
         raise ValueError("no captions available for this video") from exc
 
     with YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
-        info = ydl.extract_info(url, download=False)
+        try:
+            info = ydl.extract_info(url, download=False)
+        except DownloadError as exc:
+            raise ValueError(f"Could not fetch video metadata: {exc}") from exc
     title = info.get("title", url)
 
     text = _join_transcript(segments)
