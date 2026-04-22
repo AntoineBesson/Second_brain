@@ -46,10 +46,12 @@ def _playwright_extract(url: str) -> str:
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(url, timeout=30000)
-        html = page.content()
-        browser.close()
+        try:
+            page = browser.new_page()
+            page.goto(url, timeout=30000)
+            html = page.content()
+        finally:
+            browser.close()
 
     soup = BeautifulSoup(html, "lxml")
     return _extract_content(soup)
@@ -68,10 +70,10 @@ async def ingest_url(url: str, min_chars: int = 500) -> int:
     title = _extract_title(soup, url)
     text = _extract_content(soup)
 
-    if len(text) < min_chars:
+    if not text.strip() or len(text) < min_chars:
         text = _playwright_extract(url)
 
-    if len(text) < min_chars:
+    if not text.strip() or len(text) < min_chars:
         raise ValueError("insufficient content extracted")
 
     chunks = _chunk(text)
