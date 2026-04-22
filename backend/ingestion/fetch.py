@@ -19,7 +19,7 @@ async def fetch_bytes(
     """
     merged_headers = {**_DEFAULT_HEADERS, **(headers or {})}
 
-    if hasattr(source, "read"):
+    if isinstance(source, UploadFile):
         # UploadFile or file-like mock
         return await source.read()
 

@@ -2,15 +2,17 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import UploadFile
 
 from backend.ingestion.fetch import fetch_bytes
 
 
 async def test_fetch_bytes_upload_file():
-    mock_upload = AsyncMock()
+    mock_upload = MagicMock(spec=UploadFile)
     mock_upload.read = AsyncMock(return_value=b"pdf content")
     result = await fetch_bytes(mock_upload)
     assert result == b"pdf content"
+    mock_upload.read.assert_awaited_once()
 
 
 async def test_fetch_bytes_local_path_string(tmp_path):
