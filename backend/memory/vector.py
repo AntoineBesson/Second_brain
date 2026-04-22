@@ -8,7 +8,14 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from backend.config import settings
 
-_qdrant = QdrantClient(url=settings.qdrant_url)
+_qdrant_client: QdrantClient | None = None
+
+
+def _get_qdrant() -> QdrantClient:
+    global _qdrant_client
+    if _qdrant_client is None:
+        _qdrant_client = QdrantClient(url=settings.qdrant_url)
+    return _qdrant_client
 
 
 @dataclass
