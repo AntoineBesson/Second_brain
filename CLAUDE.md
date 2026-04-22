@@ -13,9 +13,14 @@
 ## Key Design Decisions
 - NO LangChain / LlamaIndex — raw API calls only
 - All LLM responses return structured JSON with {intent, complexity, escalate, response}
-- Embedding abstraction: always call `embed(text)`, never the model directly
-- Every ingested document gets: {source_type, source_url, title, date_added, chunk_index}
+- Embedding abstraction: always call `embed(text)`, never the model directly; `embed()` returns `EmbedResult(vector, model, source)` — never a bare list
+- Every ingested document gets: {source_type, source_url, title, date_added, chunk_index, tags}
+- Qdrant collection `"brain"` is the sole storage layer for knowledge chunks — no Postgres mirror; `knowledge_items` table left in place but unused
+- Chunking is word-based (512 words, 50-word overlap), not token-based — avoids tiktoken dependency; `_chunk()` raises `ValueError` if `overlap >= size`
 - `store_reminder` intent bypasses Tier 2 escalation entirely — it is a structured side-effect intent, not a reasoning task
+- `store_knowledge` intent also bypasses Tier 2 escalation — chunking + embedding is a side-effect, not a reasoning task
+- `query` intent calls Tier 1 twice when Qdrant has results: first call classifies intent, second call receives enriched prompt `[Retrieved context: ...]\n\nUser query: ...` and produces the actual answer; escalation runs on the second result
+- Qdrant client uses lazy initialization (`_get_qdrant()` accessor, `_qdrant_client = None` sentinel) — prevents import-time network calls in test environments
 - Reminder extraction uses a second dedicated Tier 1 call (Ollama/Haiku fallback) with a focused prompt returning `{reminder_text, datetime_str}`; datetime parsing uses `dateparser` with per-chat timezone
 - Timezone is stored per `chat_id` in `user_preferences` table (default `Europe/Paris`); `get_or_create_user_prefs` uses `INSERT ON CONFLICT DO NOTHING` + SELECT
 - Twilio WhatsApp sends use raw httpx (no Twilio SDK); the SDK is imported only for `RequestValidator` (webhook signature verification)
@@ -67,7 +72,12 @@ pytest tests/ -v
 - `backend/main.py`: scheduler started/stopped in lifespan, whatsapp router registered
 - 61 tests passing
 
+### Session 4 — Embedding + RAG layer (complete)
+- `backend/memory/vector.py`: `EmbedResult` dataclass, `embed()` (Ollama nomic-embed-text → OpenAI text-embedding-3-small fallback), `_chunk()` (word-window, 512/50), `store_chunk()` (embed + Qdrant upsert, auto-creates collection), `search()` (embed query + Qdrant search, returns payload dicts), `_get_qdrant()` lazy accessor
+- `backend/router/api.py`: `store_knowledge` branch (chunk → store, bypasses escalation), `query` enrichment (search → inject context → second Tier 1 call), `GET /embed-status` (returns active embedding model + dimensions)
+- `backend/requirements.txt`: added `qdrant-client>=1.7.0`, `openai>=1.0.0`
+- 78 tests passing
+
 ### What's not built yet
-- Embedding pipeline (`embed(text)` abstraction, Qdrant ingestion)
 - Tool execution (httpx calls from OpenAPI specs in `api_tools` table)
 - `GET /health` does not yet check the router is wired (it only checks infra services)
