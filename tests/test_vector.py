@@ -104,3 +104,70 @@ def test_store_chunk_embeds_and_upserts():
     point = call_kwargs["points"][0]
     assert point.payload["text"] == "some text"
     assert point.vector == [0.1] * 768
+
+
+from backend.memory.vector import search
+
+
+def test_search_returns_payload_list():
+    mock_embed_result = EmbedResult(vector=[0.1] * 768, model="nomic-embed-text", source="ollama")
+
+    mock_hit = MagicMock()
+    mock_hit.payload = {"text": "relevant chunk", "source_type": "whatsapp"}
+
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = MagicMock(return_value=True)
+    mock_qdrant.search = MagicMock(return_value=[mock_hit])
+
+    with patch("backend.memory.vector.embed", return_value=mock_embed_result), \
+         patch("backend.memory.vector._qdrant_client", mock_qdrant):
+        results = search("my query")
+
+    assert len(results) == 1
+    assert results[0]["text"] == "relevant chunk"
+    mock_qdrant.search.assert_called_once_with(
+        collection_name="brain",
+        query_vector=[0.1] * 768,
+        limit=5,
+        query_filter=None,
+    )
+
+
+def test_search_returns_empty_when_collection_missing():
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = MagicMock(return_value=False)
+
+    with patch("backend.memory.vector._qdrant_client", mock_qdrant):
+        results = search("my query")
+
+    assert results == []
+    mock_qdrant.search.assert_not_called()
+
+
+def test_search_correct_chunk_in_top_3():
+    """Store 3 distinct payloads; mock Qdrant to return them ranked by relevance score."""
+    chunks = [
+        {"text": "Python is a high-level programming language", "score": 0.9},
+        {"text": "Cats sleep for 16 hours a day", "score": 0.3},
+        {"text": "The Eiffel Tower is in Paris", "score": 0.2},
+    ]
+    mock_embed_result = EmbedResult(vector=[0.1] * 768, model="nomic-embed-text", source="ollama")
+
+    mock_hits = []
+    for c in sorted(chunks, key=lambda x: x["score"], reverse=True):
+        hit = MagicMock()
+        hit.payload = {"text": c["text"]}
+        hit.score = c["score"]
+        mock_hits.append(hit)
+
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = MagicMock(return_value=True)
+    mock_qdrant.search = MagicMock(return_value=mock_hits)
+
+    with patch("backend.memory.vector.embed", return_value=mock_embed_result), \
+         patch("backend.memory.vector._qdrant_client", mock_qdrant):
+        results = search("What programming language should I learn?", top_k=3)
+
+    texts = [r["text"] for r in results]
+    assert "Python is a high-level programming language" in texts
+    assert texts.index("Python is a high-level programming language") == 0

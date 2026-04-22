@@ -97,4 +97,13 @@ def store_chunk(text: str, metadata: dict) -> str:
 
 
 def search(query: str, top_k: int = 5, filter: dict | None = None) -> list[dict]:
-    pass  # placeholder — implemented in Task 5
+    if not _get_qdrant().collection_exists("brain"):
+        return []
+    result = embed(query)
+    hits = _get_qdrant().search(
+        collection_name="brain",
+        query_vector=result.vector,
+        limit=top_k,
+        query_filter=filter,
+    )
+    return [hit.payload for hit in hits]
