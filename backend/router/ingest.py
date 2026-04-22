@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.ingestion.pdf import ingest_pdf
-from backend.ingestion.registry import IngestStatus, registry
+from backend.ingestion.registry import registry
 from backend.ingestion.url import ingest_url
 from backend.ingestion.youtube import ingest_youtube
 from backend.scheduler.reminders import _send_whatsapp
@@ -23,7 +23,10 @@ async def run_ingest(
     """Background task: run ingestion and notify the user via WhatsApp when done."""
     try:
         if source_type == "pdf":
-            filename = source.split("/")[-1].split("?")[0] or "document.pdf"
+            raw = source.split("/")[-1].split("?")[0]
+            if not raw:
+                logger.warning("Could not extract filename from URL %r; using 'document.pdf'", source)
+            filename = raw or "document.pdf"
             n = await ingest_pdf(source, filename=filename, auth=auth)
             label = "PDF"
         elif source_type == "url":
@@ -74,7 +77,10 @@ async def ingest(request: Request) -> dict:
             if upload:
                 filename = getattr(upload, "filename", None) or "document.pdf"
             elif url:
-                filename = url.split("/")[-1].split("?")[0] or "document.pdf"
+                raw = url.split("/")[-1].split("?")[0]
+                if not raw:
+                    logger.warning("Could not extract filename from URL %r; using 'document.pdf'", url)
+                filename = raw or "document.pdf"
             else:
                 filename = Path(path).name if path else "document.pdf"
             n = await ingest_pdf(source, filename=filename)
