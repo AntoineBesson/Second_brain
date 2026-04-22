@@ -2,7 +2,7 @@ import httpx
 import pytest
 from unittest.mock import MagicMock, patch
 
-from backend.memory.vector import EmbedResult, embed
+from backend.memory.vector import EmbedResult, embed, _chunk
 
 
 def test_embed_returns_ollama_vector():
@@ -62,3 +62,20 @@ def test_embed_raises_runtime_error_when_both_fail():
          patch("backend.memory.vector.OpenAI", return_value=mock_openai_client):
         with pytest.raises(RuntimeError, match="Embedding unavailable"):
             embed("hello world")
+
+
+def test_chunk_returns_single_chunk_for_short_text():
+    result = _chunk("hello world foo bar")
+    assert result == ["hello world foo bar"]
+
+
+def test_chunk_splits_with_overlap():
+    # 100 words, size=60, overlap=10
+    # chunk 0: words[0:60]  (60 words)
+    # chunk 1: words[50:100] (50 words — last chunk is shorter)
+    words = ["w"] * 100
+    text = " ".join(words)
+    chunks = _chunk(text, size=60, overlap=10)
+    assert len(chunks) == 2
+    assert len(chunks[0].split()) == 60
+    assert len(chunks[1].split()) == 50

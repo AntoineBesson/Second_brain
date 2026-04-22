@@ -61,7 +61,20 @@ def _embed_openai(text: str) -> EmbedResult:
 
 
 def _chunk(text: str, size: int = 512, overlap: int = 50) -> list[str]:
-    pass  # placeholder — implemented in Task 3
+    words = text.split()
+    if not words:
+        return [""]
+    if len(words) <= size:
+        return [text]
+    chunks: list[str] = []
+    start = 0
+    while start < len(words):
+        end = min(start + size, len(words))
+        chunks.append(" ".join(words[start:end]))
+        if end == len(words):
+            break
+        start += size - overlap
+    return chunks
 
 
 def store_chunk(text: str, metadata: dict) -> str:
