@@ -594,3 +594,21 @@ async def test_store_knowledge_url_ingestion_error_returns_friendly_message():
         result = await message(req)
 
     assert "Could not ingest" in result.response
+
+
+async def test_store_knowledge_strips_trailing_punctuation_from_url():
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Save https://example.com/article.", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.ingest_url", AsyncMock(return_value=3)) as mock_ingest:
+        result = await message(req)
+
+    mock_ingest.assert_awaited_once_with("https://example.com/article")
+    assert "3" in result.response

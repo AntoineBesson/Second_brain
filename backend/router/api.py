@@ -14,6 +14,7 @@ from backend.router.escalation import call_tier2, log_escalation, should_escalat
 from backend.router.intent import call_tier1
 
 logger = logging.getLogger(__name__)
+_YT_DOMAINS = {"youtube.com", "www.youtube.com", "youtu.be"}
 router = APIRouter()
 
 
@@ -60,8 +61,7 @@ async def message(req: MessageRequest) -> MessageResponse:
     if tier1.intent == "store_knowledge":
         url_match = re.search(r"https?://[^\s]+", req.text)
         if url_match:
-            url = url_match.group(0)
-            _YT_DOMAINS = {"youtube.com", "www.youtube.com", "youtu.be"}
+            url = url_match.group(0).rstrip(".,;:!?)\"'")
             source_type = "youtube" if urlparse(url).netloc in _YT_DOMAINS else "url"
             try:
                 if source_type == "youtube":
