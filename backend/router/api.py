@@ -1,15 +1,20 @@
 import logging
+import re
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.memory.vector import _chunk, embed, search, store_chunk
+from backend.ingestion.url import ingest_url
+from backend.ingestion.youtube import ingest_youtube
 from backend.reminders.service import extract_and_save
 from backend.router.escalation import call_tier2, log_escalation, should_escalate
 from backend.router.intent import call_tier1
 
 logger = logging.getLogger(__name__)
+_YT_DOMAINS = {"youtube.com", "www.youtube.com", "youtu.be"}
 router = APIRouter()
 
 
@@ -54,22 +59,35 @@ async def message(req: MessageRequest) -> MessageResponse:
         return MessageResponse(response=response_text, tier_used=1, intent=tier1.intent)
 
     if tier1.intent == "store_knowledge":
-        try:
-            chunks = _chunk(req.text)
-            for i, chunk in enumerate(chunks):
-                store_chunk(chunk, {
-                    "source_type": "whatsapp",
-                    "source_url": "",
-                    "title": req.text[:80],
-                    "date_added": datetime.now(timezone.utc).isoformat(),
-                    "chunk_index": i,
-                    "tags": [],
-                })
-            response_text = "Saved."
-        except RuntimeError:
-            response_text = "Could not save — embedding service unavailable."
-        except Exception:
-            response_text = "Could not save — vector store unavailable."
+        url_match = re.search(r"https?://[^\s]+", req.text)
+        if url_match:
+            url = url_match.group(0).rstrip(".,;:!?)\"'")
+            source_type = "youtube" if urlparse(url).netloc in _YT_DOMAINS else "url"
+            try:
+                if source_type == "youtube":
+                    n = await ingest_youtube(url)
+                else:
+                    n = await ingest_url(url)
+                response_text = f"Saved — ingested {n} chunks from {url}."
+            except Exception as exc:
+                response_text = f"Could not ingest URL: {exc}"
+        else:
+            try:
+                chunks = _chunk(req.text)
+                for i, chunk in enumerate(chunks):
+                    store_chunk(chunk, {
+                        "source_type": "whatsapp",
+                        "source_url": "",
+                        "title": req.text[:80],
+                        "date_added": datetime.now(timezone.utc).isoformat(),
+                        "chunk_index": i,
+                        "tags": [],
+                    })
+                response_text = "Saved."
+            except RuntimeError:
+                response_text = "Could not save — embedding service unavailable."
+            except Exception:
+                response_text = "Could not save — vector store unavailable."
         return MessageResponse(response=response_text, tier_used=1, intent=tier1.intent)
 
     if tier1.intent == "query":
