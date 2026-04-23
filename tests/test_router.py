@@ -514,3 +514,83 @@ async def test_message_endpoint_continues_on_search_failure():
 
     assert call_tier1_mock.call_count == 1
     assert result.response == "Fallback answer"
+
+
+# ---------------------------------------------------------------------------
+# store_knowledge — URL auto-detection
+# ---------------------------------------------------------------------------
+
+async def test_store_knowledge_routes_to_ingest_url_when_url_in_text():
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Save this https://example.com/article", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.ingest_url", AsyncMock(return_value=5)) as mock_ingest:
+        result = await message(req)
+
+    mock_ingest.assert_awaited_once_with("https://example.com/article")
+    assert "5" in result.response
+    assert result.intent == "store_knowledge"
+
+
+async def test_store_knowledge_routes_to_ingest_youtube_for_youtube_url():
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(
+        text="Watch this https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        chat_id="chat_001",
+    )
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.ingest_youtube", AsyncMock(return_value=8)) as mock_yt:
+        result = await message(req)
+
+    mock_yt.assert_awaited_once_with("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert "8" in result.response
+
+
+async def test_store_knowledge_falls_back_to_text_when_no_url():
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Python is great for data science", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api._chunk", return_value=["Python is great for data science"]), \
+         patch("backend.router.api.store_chunk", return_value="uuid") as mock_store:
+        result = await message(req)
+
+    mock_store.assert_called_once()
+    assert result.response == "Saved."
+
+
+async def test_store_knowledge_url_ingestion_error_returns_friendly_message():
+    tier1_result = Tier1Response(
+        intent="store_knowledge",
+        complexity=0.2,
+        escalate=False,
+        escalation_reason="",
+        response="",
+    )
+    req = MessageRequest(text="Save https://example.com", chat_id="chat_001")
+
+    with patch("backend.router.api.call_tier1", AsyncMock(return_value=tier1_result)), \
+         patch("backend.router.api.ingest_url", AsyncMock(side_effect=ValueError("insufficient content"))):
+        result = await message(req)
+
+    assert "Could not ingest" in result.response
