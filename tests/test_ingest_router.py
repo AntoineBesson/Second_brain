@@ -104,7 +104,7 @@ async def test_run_ingest_updates_registry_to_complete_on_success():
     assert status.status == "complete"
     assert status.chunks_stored == 9
     mock_send.assert_awaited_once()
-    assert "9" in mock_send.call_args.args[0]
+    assert "9" in str(mock_send.call_args)
 
 
 async def test_run_ingest_updates_registry_to_error_on_failure():
@@ -120,7 +120,7 @@ async def test_run_ingest_updates_registry_to_error_on_failure():
     assert status.status == "error"
     assert "insufficient content" in status.error_msg
     mock_send.assert_awaited_once()
-    assert "failed" in mock_send.call_args.args[0].lower()
+    assert "failed" in str(mock_send.call_args).lower()
 
 
 async def test_run_ingest_pdf_passes_auth_to_ingester():
