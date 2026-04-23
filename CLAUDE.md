@@ -25,8 +25,19 @@
 - Timezone is stored per `chat_id` in `user_preferences` table (default `Europe/Paris`); `get_or_create_user_prefs` uses `INSERT ON CONFLICT DO NOTHING` + SELECT
 - Twilio WhatsApp sends use raw httpx (no Twilio SDK); the SDK is imported only for `RequestValidator` (webhook signature verification)
 - APScheduler dispatches reminders individually: Twilio failure on one skips `mark_sent` for that row only (retries on next 60s tick); does not block others
-- TwiML responses must XML-escape LLM output (`xml.sax.saxutils.escape`) before interpolation
+- TwiML responses must XML-escape LLM output (`xml.sax.saxutils.escape`) before interpolation — applied to all TwiML paths including the ingestion processing reply
 - Alembic `server_default` for string literals must include SQL quoting: `"'value'"` not `"value"`
+- Ingestion ingesters (`ingest_pdf`, `ingest_url`, `ingest_youtube`) are async but call sync `httpx.get` — consistent with the `vector.py` pattern; router-level callers do not need `asyncio.to_thread`
+- `fetch_bytes(source, auth, headers)` is the shared primitive for all source types: `UploadFile` → `await source.read()`, local path → `Path.read_bytes()`, HTTP URL → sync `httpx.get` with merged `_DEFAULT_HEADERS`; `isinstance(source, UploadFile)` used (not `hasattr`) — `MagicMock(spec=UploadFile)` passes `isinstance` checks
+- `TaskRegistry` is an in-memory class-backed singleton (`registry = TaskRegistry()` at module level in `registry.py`); both the ingest router and whatsapp interface import the same instance
+- `store_knowledge` intent auto-detects URLs with `re.search(r"https?://[^\s]+", text).rstrip(".,;:!?)\"'")` — trailing punctuation stripped before dispatch; YouTube domains `{youtube.com, www.youtube.com, youtu.be}` → `ingest_youtube`, all others → `ingest_url`; plain text falls back to chunk+store
+- WhatsApp webhook: `Body: str = Form("")` (not `Form(...)`) — PDF-only Twilio messages arrive with an empty body; `MediaUrl0`/`MediaContentType0` are optional form fields
+- Twilio PDF media URLs require Basic auth `(ACCOUNT_SID, AUTH_TOKEN)` — passed through `fetch_bytes(source, auth=(...))` to `httpx.get`
+- `_YT_DOMAINS` set is defined at module level in both `api.py` and `whatsapp.py` — acceptable duplication across separate modules; if domains change, update both
+- URL regex trailing punctuation strip (`rstrip(".,;:!?)\"'")`) is applied in both `api.py` and `whatsapp.py` before passing URLs to ingesters
+- `ingest_youtube` maps both `NoTranscriptFound` and `TranscriptsDisabled` (youtube-transcript-api) and `DownloadError` (yt-dlp) to `ValueError("no captions available...")` / `ValueError("Could not fetch video metadata: ...")`
+- `_playwright_extract` uses `try/finally` around `browser.close()` to prevent Chromium subprocess leak if `page.goto()` raises; playwright import is a soft import (`try/except ImportError` returns `""`)
+- PyMuPDF (`fitz`) document opened with `with fitz.open(stream=raw, filetype="pdf") as doc:` — context manager guarantees close on error
 
 ## Environment Variables (see .env.example)
 ANTHROPIC_API_KEY, OPENAI_API_KEY, TWILIO_ACCOUNT_SID, 
@@ -77,6 +88,20 @@ pytest tests/ -v
 - `backend/router/api.py`: `store_knowledge` branch (chunk → store, bypasses escalation), `query` enrichment (search → inject context → second Tier 1 call), `GET /embed-status` (returns active embedding model + dimensions)
 - `backend/requirements.txt`: added `qdrant-client>=1.7.0`, `openai>=1.0.0`
 - 78 tests passing
+
+### Session 5 — Ingestion pipeline (complete)
+- `backend/ingestion/__init__.py`: empty package marker
+- `backend/ingestion/registry.py`: `IngestStatus` dataclass, `TaskRegistry` (in-memory, class-backed), module-level `registry` singleton
+- `backend/ingestion/fetch.py`: `fetch_bytes(source, auth, headers) → bytes` — shared primitive for UploadFile / local path / HTTP URL
+- `backend/ingestion/pdf.py`: `ingest_pdf(source, filename, auth) → int` — PyMuPDF page extraction → `_chunk` → `store_chunk`; fitz context manager; `ImportError` hint if pymupdf missing
+- `backend/ingestion/url.py`: `ingest_url(url, min_chars=500) → int` — httpx + BeautifulSoup; og:title → meta[name=title] → `<title>` → URL title chain; strips nav/footer/header/script/style; optional Playwright fallback; `ValueError` if content still too short
+- `backend/ingestion/youtube.py`: `ingest_youtube(url) → int` — youtube-transcript-api + yt-dlp; sentence-grouped transcript (space within sentence, `\n` between); `_extract_video_id` handles watch/youtu.be/shorts; maps transcript/metadata errors to `ValueError`
+- `backend/router/ingest.py`: `POST /ingest` (sync, JSON or multipart), `GET /ingest/{id}/status` (404 on unknown), `run_ingest` background task (updates registry, notifies via WhatsApp on complete or error)
+- `backend/interfaces/whatsapp.py`: rewritten — detects Twilio PDF attachment (`MediaUrl0` + `MediaContentType0==application/pdf`) and HTTP URLs in body; queues `BackgroundTask`; replies immediately with processing confirmation; plain messages pass through unchanged
+- `backend/router/api.py`: `store_knowledge` branch updated — URL auto-detection with trailing punctuation strip; YouTube vs generic URL dispatch; falls back to chunk+store for plain text
+- `backend/main.py`: ingest router registered
+- `backend/requirements.txt`: added `pymupdf`, `beautifulsoup4`, `lxml`, `youtube-transcript-api`, `yt-dlp`
+- 144 tests passing
 
 ### What's not built yet
 - Tool execution (httpx calls from OpenAPI specs in `api_tools` table)
