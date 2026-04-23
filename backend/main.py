@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from backend.db import engine
 from backend.health import router as health_router
-from backend.ingestion.router import router as ingest_router
+from backend.router.ingest import router as ingest_router
 from backend.interfaces.whatsapp import router as whatsapp_router
 from backend.router.api import router as message_router
 from backend.scheduler.reminders import create_scheduler
