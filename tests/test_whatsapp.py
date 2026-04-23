@@ -100,12 +100,15 @@ async def test_whatsapp_pdf_attachment_enqueues_background_task():
     assert response.status_code == 200
     assert "processing" in response.text.lower()
     mock_registry.create.assert_called_once()
+    pdf_call = mock_run_ingest.call_args
+    assert pdf_call.args[1] == "pdf"
+    assert pdf_call.kwargs.get("auth") is not None
 
 
 async def test_whatsapp_url_in_body_enqueues_background_task():
     with patch("backend.interfaces.whatsapp.RequestValidator") as MockValidator, \
          patch("backend.interfaces.whatsapp.registry") as mock_registry, \
-         patch("backend.interfaces.whatsapp.run_ingest"):
+         patch("backend.interfaces.whatsapp.run_ingest") as mock_run_ingest:
         MockValidator.return_value.validate.return_value = True
         mock_registry.create.return_value = "task-uuid-456"
 
@@ -124,12 +127,14 @@ async def test_whatsapp_url_in_body_enqueues_background_task():
     assert response.status_code == 200
     assert "processing" in response.text.lower()
     mock_registry.create.assert_called_once()
+    call_args = mock_run_ingest.call_args
+    assert call_args.args[1] == "url"
 
 
 async def test_whatsapp_youtube_url_in_body_enqueues_background_task():
     with patch("backend.interfaces.whatsapp.RequestValidator") as MockValidator, \
          patch("backend.interfaces.whatsapp.registry") as mock_registry, \
-         patch("backend.interfaces.whatsapp.run_ingest"):
+         patch("backend.interfaces.whatsapp.run_ingest") as mock_run_ingest:
         MockValidator.return_value.validate.return_value = True
         mock_registry.create.return_value = "task-uuid-789"
 
@@ -148,6 +153,8 @@ async def test_whatsapp_youtube_url_in_body_enqueues_background_task():
     assert response.status_code == 200
     assert "processing" in response.text.lower()
     mock_registry.create.assert_called_once()
+    call_args = mock_run_ingest.call_args
+    assert call_args.args[1] == "youtube"
 
 
 async def test_whatsapp_plain_text_still_goes_to_message_handler():
